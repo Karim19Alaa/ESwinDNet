@@ -1,0 +1,18 @@
+_target_: models.base_model.BaseModel
+
+net:
+  _target_: archs.eswindnet.ESwinDNet
+  en_feature_num: 48  # The initial channel number of dense blocks of encoder
+  en_inter_num: 32    # The growth rate (intermediate channel number) of dense blocks of encoder
+  de_feature_num: 64  # The initial channel number of dense blocks of decoder
+  de_inter_num: 32    # The growth rate (intermediate channel number) of dense blocks of decoder
+  sam_number: 1       # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
+  img_size: 768
+  rstb_count: 2
+  depth: 4
+  num_heads: 16
+  window_size: 8
+  mlp_ratio: 2
+  resi_connection: '1conv'
+  shared: True
+

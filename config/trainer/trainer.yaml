@@ -1,0 +1,28 @@
+manual_seed: 123
+
+checkpoint_path: 
+
+trainer_args: 
+  max_steps: 337500       ###### if not specified eta will not be calculated
+  accumulate_grad_batches: 1
+  enable_progress_bar: False
+
+callbacks:
+  EMAModelCheckpoint:
+    _target_: utils.ema.EMAModelCheckpoint
+    every_n_epochs: 1
+    save_top_k: -1
+    save_last: True
+    save_on_train_epoch_end: True
+
+  EMACallback:
+    _target_: utils.ema.EMA
+    decay: 0.999
+    apply_ema_every_n_steps: 1
+    start_step: 0
+    save_ema_weights_in_callback_state: true
+    evaluate_ema_weights_instead: true
+  
+  LearningRateMonitor:
+    _target_: pytorch_lightning.callbacks.LearningRateMonitor
+    logging_interval: epoch

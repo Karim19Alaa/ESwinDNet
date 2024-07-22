@@ -1,0 +1,35 @@
+train:  
+  optim:
+    _target_: torch.optim.Adam
+    lr: 0.0001
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    T_max: ${trainer.trainer_args.max_steps}
+    eta_min: 2.5e-5
+
+  losses:
+    esd:
+      _target_: loss.weighted_loss.WeightedLoss
+      loss:
+        _target_: loss.esd_loss.multi_VGGPerceptualLoss
+        lam: 1
+        lam_p: 1
+        
+      weight: 1.0
+      
+    wavelets:
+      _target_: loss.weighted_loss.WeightedLoss
+      loss:
+          _target_: loss.waveletv2_loss.WaveletLossv2
+          scale: 2
+        
+      weight: 1.0
+
+val:
+  metrics:
+    psnr:
+      _target_: metrics.uhdm_metrics.PSNR
+      
+    ssim:
+      _target_: metrics.uhdm_metrics.SSIM

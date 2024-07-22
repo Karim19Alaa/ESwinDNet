@@ -1,0 +1,45 @@
+_target_: data.base_data_module.BaseDataModule
+
+opt:
+  # dataroot: ../datasets/uhdm
+  target: data.fhdmi_dataset.FHDMi
+  train:
+    dataset:
+      _target_: ${data.opt.target}
+      dataroot: 
+      phase: train
+      gt_size: 768
+      use_hflip: True
+      use_vflip: True
+      use_rot: True
+
+
+    dataloader:
+      batch_size: 2
+      num_workers: 4
+      shuffle: True
+      pin_memory: True
+
+  val:
+    dataset:
+      _target_: ${data.opt.target}
+      dataroot: 
+      phase: val
+  
+    dataloader:
+      batch_size: 1
+      num_workers: 2
+      # shuffle: True
+      # pin_memory: True
+
+  test:
+    dataset:
+      _target_: ${data.opt.target}
+      dataroot: 
+      phase: test
+  
+    dataloader:
+      batch_size: 1
+      num_workers: 2
+      # shuffle: True
+      # pin_memory: True

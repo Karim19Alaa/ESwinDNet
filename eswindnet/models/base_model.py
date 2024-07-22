@@ -1,0 +1,171 @@
+from collections import OrderedDict
+
+import pytorch_lightning as pl
+import hydra
+import torch
+import torchvision
+from torch.nn import functional as F
+
+import os
+
+
+from utils.console_logger import ConsoleLogger
+from torch import nn
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from utils.logger import get_root_logger
+
+class BaseModel(pl.LightningModule):
+    def __init__(self, net) -> None:
+        super().__init__()
+        self.net = net
+        self.console_logger = ConsoleLogger()
+        self.padding_w = 32 * (net.window_size if hasattr(net, 'window_size') else 1)
+
+    def get_bare_model(self):
+        return self.net
+
+    def network_to_string(self):
+        return str(self.get_bare_model())
+    
+    def train(self, mode=True):
+        self.net.train()
+
+    def setup_training(self, cfg):
+        self.cfg = cfg
+        self.save_hyperparameters(cfg, logger=False)
+   
+        self.losses = nn.ModuleDict(hydra.utils.instantiate(cfg['train']['losses'])).eval()
+        for p in self.losses.parameters():
+            p.requires_grad = False
+
+        self.metrics = nn.ModuleDict(hydra.utils.instantiate(cfg['val']['metrics'])).eval()
+        for p in self.metrics.parameters():
+            p.requires_grad = False
+    
+    def setup_testing(self, cfg):
+        self.cfg = cfg
+        self.save_hyperparameters(cfg, logger=False)
+        self.metrics = nn.ModuleDict(hydra.utils.instantiate(cfg['metrics'])).eval()
+        for p in self.metrics.parameters():
+            p.requires_grad = False
+        self.load_state_dict(torch.load(cfg.trainer_args.ckpt_path)['state_dict'])
+        self.net = self.net.eval()
+
+    @rank_zero_only
+    def print_netowrk(self, stage=None):
+        logger = get_root_logger()
+
+        logger.info(f"\n{self.network_to_string()}\n")
+
+    
+
+    def calculate_loss(self, y_hat, y, phase):
+        loss_dict = OrderedDict()
+        l_total = 0
+        for loss_name, loss_fn in self.losses.items():
+            # loss_name, loss_fn = list(loss.items())[0]
+            loss_dict[f'{phase}/{loss_name}'] = loss_fn(y_hat, y)
+            # Check if the result is a tuple
+            if isinstance(loss_dict[f'{phase}/{loss_name}'], tuple):
+                loss_dict[f'{phase}/{loss_name}'] = sum(loss_dict[f'{phase}/{loss_name}'])
+            l_total += loss_dict[f'{phase}/{loss_name}']
+
+        loss_dict[f'{phase}/l_total'] = l_total
+        return loss_dict
+
+    def calculate_metrics(self, y_hat, y, phase):
+        metrics_dict = OrderedDict()
+        for metric_name, metric_fn in self.metrics.items():
+            result = metric_fn(y_hat, y)
+            if isinstance(result, dict):
+                metrics_dict.update({f'{phase}/{metric_name}/{k}': v for k, v in result.items()})
+            else:
+                metrics_dict[f'{phase}/{metric_name}'] = result
+        return metrics_dict
+
+    def batch_adapter(self, batch):        
+        return batch['lq'], batch['gt'] 
+    
+
+    def training_step(self, batch, batch_idx):
+        x, y = self.batch_adapter(batch)        
+        y_hat = self.net(x)
+
+        loss_dict = self.calculate_loss(y_hat, y, 'train')
+        self.log_dict(loss_dict, on_step=True, on_epoch=True, sync_dist=True, batch_size=len(batch['lq_path']))
+        return loss_dict['train/l_total']
+
+    def preprocess(self, x):
+        window_size = self.padding_w
+        self.mod_pad_h, self.mod_pad_w = 0, 0
+        _, _, h, w = x.size()
+        if h % window_size != 0:
+            self.mod_pad_h = window_size - h % window_size
+        if w % window_size != 0:
+            self.mod_pad_w = window_size - w % window_size
+            
+        return F.pad(x, (0, self.mod_pad_w, 0, self.mod_pad_h), 'reflect')
+
+    def postprocess(self, x):
+        _, _, h, w = x.size()
+        return x[:, :, 0:h - self.mod_pad_h, 0:w - self.mod_pad_w]
+
+    def validation_step(self, batch, batch_idx):
+        x, y = self.batch_adapter(batch)
+        y_hat = self.postprocess(self.net(self.preprocess(x))[0])
+
+        metrics_dict = self.calculate_metrics(y_hat, y, 'val')
+
+        self.log_dict(metrics_dict, sync_dist=True, batch_size=len(batch['lq_path']))
+
+    def on_test_start(self) -> None:
+        self.results = []
+        return super().on_test_start()
+
+    def test_step(self,  batch, batch_idx):
+        x, y = self.batch_adapter(batch)
+        y_hat = self.postprocess(self.net(self.preprocess(x))[0])
+
+        metrics_dict = self.calculate_metrics(y_hat, y, 'test')
+        
+        self.save_results(batch, y_hat)
+
+        self.log_dict(metrics_dict, sync_dist=True, batch_size=len(batch['lq_path']))
+
+    def save_results(self, batch, y_hat):
+        if not self.cfg.save_results:
+            return
+        
+        y_hat = y_hat.cpu()
+        for i, img in enumerate(y_hat):
+            filename = os.path.basename(batch['lq_path'][i])
+            torchvision.utils.save_image(img, f"{self.cfg.save_dir}/{filename}")
+
+    def configure_optimizers(self):
+        optimizer = hydra.utils.instantiate(self.hparams.train.optim, params=self.get_bare_model().parameters())
+        if 'scheduler' in self.hparams.train:
+            scheduler = hydra.utils.instantiate(self.hparams.train.scheduler, optimizer=optimizer)
+            if 'monitor' in self.hparams.train:
+                monitor = self.hparams.train.monitor
+                return [optimizer], [{"scheduler": scheduler, "monitor": monitor, "interval": "epoch"}]
+            return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
+        return [optimizer]
+
+    def on_train_start(self) -> None:
+        get_root_logger().info(f'Training Started...')
+        self.console_logger.train_tic()
+
+
+    def on_train_batch_end(self, outputs, batch, batch_idx):
+        if self.trainer.global_step % self.trainer.log_every_n_steps == 0:
+            self.console_logger.log_train_step(self.trainer, self.trainer.callback_metrics, self.optimizers())
+
+    
+    def on_validation_epoch_start(self):
+        get_root_logger().info(f'Validation Started...')
+        self.console_logger.val_tic()
+
+
+    def on_validation_epoch_end(self):
+        self.console_logger.log_validation_result(self.trainer, self.trainer.callback_metrics)
+        self.console_logger.train_tic()

@@ -1,0 +1,14 @@
+manual_seed: 123
+save_results: True
+save_dir: results/${name}/output
+
+metrics:
+  psnr:
+    _target_: metrics.uhdm_metrics.PSNR
+    
+  ssim:
+    _target_: metrics.uhdm_metrics.SSIM
+
+trainer_args:
+  ckpt_path:
+  verbose: True

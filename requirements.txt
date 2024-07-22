@@ -1,0 +1,14 @@
+hydra-core
+numpy
+pytorch-lightning
+tensorboard
+timm
+torchmetrics
+torchvision
+tqdm
+scikit-image
+
+einops
+torch>=1.7
+torchinfo
+lpips==0.1.4

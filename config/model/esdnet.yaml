@@ -1,0 +1,10 @@
+_target_: models.base_model.BaseModel
+
+net:
+  _target_: archs.esdnet.ESDNet
+  en_feature_num: 48  # The initial channel number of dense blocks of encoder
+  en_inter_num: 32    # The growth rate (intermediate channel number) of dense blocks of encoder
+  de_feature_num: 64  # The initial channel number of dense blocks of decoder
+  de_inter_num: 32    # The growth rate (intermediate channel number) of dense blocks of decoder
+  sam_number: 1       # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
+

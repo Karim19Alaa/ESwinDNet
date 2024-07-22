@@ -1,0 +1,15 @@
+name: 
+hydra:
+  job:
+    name: ${name}
+  run:
+    dir: results/${name}
+
+logger:
+  use_tb_logger: True
+
+
+defaults:
+- data: UHDM
+- model: eswindnet
+- testing: testing

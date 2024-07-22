@@ -1,0 +1,22 @@
+name:
+hydra:
+  job:
+    name: ${name}
+  run:
+    dir: experiments/${name}
+
+logger:
+  use_tb_logger:
+  wandb:
+    project: 
+    resume_id:
+    group:
+
+defaults:
+- data: uhdm
+- model: eswindnet
+- training: training
+- trainer: trainer
+
+
+
