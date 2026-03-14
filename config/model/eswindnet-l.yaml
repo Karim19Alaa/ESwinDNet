@@ -8,9 +8,9 @@ net:
   de_inter_num: 32    # The growth rate (intermediate channel number) of dense blocks of decoder
   sam_number: 1       # The number of SAM for each encoder or decoder level; set 1 for our ESDNet, and 2 for ESDNet-L
   img_size: 768
-  rstb_count: 2
-  depth: 4
-  num_heads: 16
+  rstb_count: 1
+  depth: 6
+  num_heads: 32
   window_size: 8
   mlp_ratio: 2
   resi_connection: '1conv'

@@ -8,9 +8,13 @@ from pytorch_lightning import Trainer, seed_everything
 from utils.logger import get_env_info, init_logging
 from utils.logger import get_root_logger
 
+logger = get_root_logger()
+
+
 def setup_testing(testing_cfg):
     if testing_cfg.save_dir is not None:
         os.makedirs(testing_cfg.save_dir, exist_ok=True)
+
 
 def setup_datasets(data_cfg):
     data_loader = hydra.utils.instantiate(data_cfg)
@@ -25,29 +29,32 @@ def setup_model(model_cfg, testing_cfg):
 
     return model
 
-def setup_checkpoint(testing_cfg):
-    if testing_cfg.trainer_args['ckpt_path'] is None:
-        return
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    chkpt = torch.load(testing_cfg.trainer_args['ckpt_path'], map_location=device)
-    
-    # Remove keys starting with 'losses.' from the state_dict and save it
-    state_dict = {k: v for k, v in chkpt['state_dict'].items() if not k.startswith('losses.')}
-    chkpt['state_dict'] = state_dict
 
-    new_ckpt_path = testing_cfg.trainer_args['ckpt_path'] + '_without_losses'
-    print(f"Saving new checkpoint in {new_ckpt_path}")
-    torch.save(chkpt, new_ckpt_path)
-    testing_cfg.trainer_args['ckpt_path'] = new_ckpt_path
-    
+def setup_checkpoint(testing_cfg):
+    if testing_cfg.trainer_args["ckpt_path"] is None:
+        return
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    chkpt = torch.load(testing_cfg.trainer_args["ckpt_path"], map_location=device)
+
+    # Remove keys starting with 'losses.' from the state_dict and save it
+    state_dict = {
+        k: v for k, v in chkpt["state_dict"].items() if not k.startswith("losses.")
+    }
+    if state_dict != chkpt["state_dict"]:
+        chkpt["state_dict"] = state_dict
+
+        new_ckpt_path = testing_cfg.trainer_args["ckpt_path"] + "_without_losses"
+        logger.info(f"Saving new checkpoint in {new_ckpt_path}")
+        torch.save(chkpt, new_ckpt_path)
+        testing_cfg.trainer_args["ckpt_path"] = new_ckpt_path
+
     return testing_cfg
+
 
 @hydra.main(version_base=None, config_path="../config", config_name="test_config")
 def test_pipeline(cfg):
-    logger = get_root_logger()
 
     logger.info(get_env_info())
-
 
     logger.info(f"\n{OmegaConf.to_yaml(cfg)}")
 
@@ -55,16 +62,16 @@ def test_pipeline(cfg):
 
     tb_logger = init_logging(cfg)
 
-    trainer = Trainer(logger=tb_logger)
+    trainer = Trainer(logger=tb_logger, accelerator="auto")
 
     data_loader = setup_datasets(cfg.data)
 
     model = setup_model(cfg.model, setup_checkpoint(cfg.testing))
 
-
     setup_testing(cfg.testing)
-    
+
     trainer.test(model, data_loader, verbose=True)
+
 
 if __name__ == "__main__":
     test_pipeline()
