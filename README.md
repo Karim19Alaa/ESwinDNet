@@ -32,7 +32,7 @@ cd ESwinDNet
 
 ### 2. Create and Activate Virtual Environment
 
-Using **Python 3.7+**
+Using **Python 3.10**
 
 ```sh
 # Create virtual environment
